@@ -1,9 +1,9 @@
 DBRev is a fork of DBV project, a database version control, merged with dbdiff and extended to support multiple projects revision!
 
 **How to install:**
-- checout the project
-- run composer update
-- rename **.dbdiff.dist** to **.dbdiff** and edit as needed.
+- checkout the project
+- run composer update to bring *dbdiff* into this project
+- rename **.dbdiff.dist** to **.dbdiff** and edit as needed. You find this file in the root of the project.
 - duplicate folder **/data/demo.dist** into your **[project-name]**
 - rename **/data/[project-name]/meta/project.dist.php** to **/data/[project-name]/meta/project.php**
 - edit **/data/[project-name]/meta/project.php** accordingly;
