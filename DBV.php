@@ -38,8 +38,10 @@ class DBV
 
     protected $_action = "index";
     protected $_adapter;
+    protected $_dev_adapter;
     protected $_log = array();
-
+    protected $mode = 'up';
+    
     public function authenticate()
     {
         if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
@@ -47,19 +49,15 @@ class DBV
         } else {
             if (function_exists('apache_request_headers')) {
                 $headers = apache_request_headers();
-                $authorization = array_key_exists('HTTP_AUTHORIZATION', $headers)
-                    ? $headers['HTTP_AUTHORIZATION']
-                    : (array_key_exists('Authorization', $headers)?$headers['Authorization']:'');
+                $authorization = $headers['HTTP_AUTHORIZATION'];
             }
         }
 
-        if ($authorization) {
-            list($_SERVER['PHP_AUTH_USER'], $_SERVER['PHP_AUTH_PW']) = explode(':', base64_decode(substr($authorization, 6)));
-        }
+        list($_SERVER['PHP_AUTH_USER'], $_SERVER['PHP_AUTH_PW']) = explode(':', base64_decode(substr($authorization, 6)));
         if (strlen(DBV_USERNAME) && strlen(DBV_PASSWORD) && (!isset($_SERVER['PHP_AUTH_USER']) || !($_SERVER['PHP_AUTH_USER'] == DBV_USERNAME && $_SERVER['PHP_AUTH_PW'] == DBV_PASSWORD))) {
             header('WWW-Authenticate: Basic realm="DBV interface"');
             header('HTTP/1.0 401 Unauthorized');
-            echo __('Access denied');
+            echo _('Access denied');
             exit();
         }
     }
@@ -67,13 +65,41 @@ class DBV
     /**
      * @return DBV_Adapter_Interface
      */
-    protected function _getAdapter()
+    protected function _getAdapter($dev = false)
     {
+        if($dev){
+            return $this->_get_dev_adapter();    
+        }else{
+            return $this->_get_prod_adapter();
+        }
+        
+    }
+
+    protected function _get_dev_adapter(){
+        if (!$this->_dev_adapter) {
+            $file = DBV_ROOT_PATH . DS . 'lib' . DS . 'adapters' . DS . DB_ADAPTER . '.php';
+            if (file_exists($file)) {
+                require_once $file;
+                $class = 'DBV_Adapter_' . DB_ADAPTER;
+                if (class_exists($class)) {
+                    $adapter = new $class;
+                    try {
+                        $adapter->connect(DB_HOST, DB_PORT, DB_USERNAME, DB_PASSWORD, DB_DEV_NAME);
+                        $this->_dev_adapter = $adapter;
+                    } catch (DBV_Exception $e) {
+                        $this->error("[{$e->getCode()}] " . $e->getMessage());
+                    }
+                }
+            }
+        }
+        return $this->_dev_adapter;
+    }
+
+    protected function _get_prod_adapter(){
         if (!$this->_adapter) {
             $file = DBV_ROOT_PATH . DS . 'lib' . DS . 'adapters' . DS . DB_ADAPTER . '.php';
             if (file_exists($file)) {
                 require_once $file;
-
                 $class = 'DBV_Adapter_' . DB_ADAPTER;
                 if (class_exists($class)) {
                     $adapter = new $class;
@@ -86,10 +112,9 @@ class DBV
                 }
             }
         }
-
         return $this->_adapter;
     }
-
+    
     public function dispatch()
     {
         $action = $this->_getAction() . "Action";
@@ -103,10 +128,14 @@ class DBV
             $this->revisions = $this->_getRevisions();
             $this->revision = $this->_getCurrentRevision();
         }
-
+        $this->projects = $this->getProjects();
         $this->_view("index");
     }
 
+    public function setProject($project){
+        $this->project = $project;
+    }
+    
     public function schemaAction()
     {
         $items = isset($_POST['schema']) ? $_POST['schema'] : array();
@@ -140,9 +169,10 @@ class DBV
 
     public function revisionsAction()
     {
-        $revisions = isset($_POST['revisions']) ? array_filter($_POST['revisions'], 'is_numeric') : array();
+        $revisions = isset($_POST['revisions']) ? array_map("intval", $_POST['revisions']) : array();
         $current_revision = $this->_getCurrentRevision();
-
+        $this->mode = $_POST['down']?'down':'up';
+        
         if (count($revisions)) {
             sort($revisions);
 
@@ -156,9 +186,15 @@ class DBV
                             break 2;
                         }
                     }
+                }else{
+                    self::deleteDir(DBV_REVISIONS_PATH.'/'.$last_revision);
                 }
 
-                if ($revision > $current_revision) {
+                if ($this->mode=='up' && $revision > $current_revision) {
+                    $this->_setCurrentRevision($revision);
+                }elseif ($this->mode=='down' && $revision < $current_revision) {
+                    $this->_setCurrentRevision($revision);
+                }elseif ($revision > $current_revision){
                     $this->_setCurrentRevision($revision);
                 }
                 $this->confirm(__("Executed revision #{revision}", array('revision' => "<strong>$revision</strong>")));
@@ -180,6 +216,48 @@ class DBV
         }
     }
 
+    
+    
+    public function revdelAction(){
+        foreach ($_POST['revisions'] as $dir) {
+            self::deleteDir(DBV_REVISIONS_PATH.'/'.$dir);
+        }
+        $this->_json(array('ok' => true, 'message' => __("Deleted")));
+    }
+    
+    public function dbdiffAction(){
+        $last_revision = 0;
+        foreach (new DirectoryIterator(DBV_REVISIONS_PATH) as $file) {
+            $a = $file->getFilename();
+            if(is_numeric($a)){
+                $last_revision = max([$a, $last_revision]);
+            }
+        }
+        $last_revision++;
+        @mkdir(DBV_REVISIONS_PATH.'/'.$last_revision, 0755, true);
+
+        $dev_db = DBDIFF_DEV;
+        $prod_db = DBDIFF_PROD;
+
+        if($_POST['dev_db']) $dev_db = $_POST['dev_db']; 
+        if($_POST['prod_db']) $prod_db = $_POST['prod_db'];
+
+        if($_GET['a'] == 'dbdiff'){
+            $GLOBALS['argv'][]='dbdiff.php';
+            $GLOBALS['argv'][]='server1.'.$dev_db.':server2.'.$prod_db;
+            $GLOBALS['argv'][]='--output='.DBV_REVISIONS_PATH.'/'.$last_revision.'/'.$dev_db.'.sql';
+            $diff_type = 'schema';
+            if($_POST['dif_type']) $diff_type = 'all';
+            $GLOBALS['argv'][]='--type='.$diff_type;
+        }  
+              
+        require('dbdiff.php');
+        
+        //remove empty revision
+        if(!@filesize(DBV_REVISIONS_PATH.'/'.$last_revision.'/'.$dev_db.'.sql')) @rmdir(DBV_REVISIONS_PATH.'/'.$last_revision);
+        
+        $this->_json(array('ok' => true, 'message' => __("Done")));
+    }
 
     public function saveRevisionFileAction()
     {
@@ -211,7 +289,7 @@ class DBV
     protected function _createSchemaObject($item)
     {
         $file = DBV_SCHEMA_PATH . DS . "$item.sql";
-
+        $this->mode  ='all';
         if (file_exists($file)) {
             if ($this->_runFile($file)) {
                 $this->confirm(__("Created schema object #{item}", array('item' => "<strong>$item</strong>")));
@@ -254,7 +332,34 @@ class DBV
                 }
 
                 try {
-                    $this->_getAdapter()->query($content);
+                    if($this->mode == 'down'){
+                        $content = explode('#---------- DOWN ----------', $content);
+                        $content  =array_pop($content);
+                    }elseif($this->mode == 'up'){
+                        $content = explode('#---------- UP ----------', $content)[1];
+                        $content = explode('#---------- DOWN ----------', $content)[0];
+                    }else{
+                        //run all file, it's nto revision
+                    }
+                    
+                    $content = explode(";\n",str_replace("\r","", $content));
+                    foreach ($content as $query) {
+                        try {
+                            if($query){
+                                $this->_getAdapter()->query($query);
+                            }                        
+                        } catch (DBV_Exception $e) {
+                            $this->error("[PROD] [{$e->getCode()}] {$e->getMessage()} in <strong>$file</strong>");
+                        }
+                        try {
+                            if($query){
+                                $this->_getAdapter(true)->query($query);
+                            }                        
+                        } catch (DBV_Exception $e) {
+                            $this->error("[DEV] [{$e->getCode()}] {$e->getMessage()} in <strong>$file</strong>");
+                        }
+                        
+                    }
                     return true;
                 } catch (DBV_Exception $e) {
                     $this->error("[{$e->getCode()}] {$e->getMessage()} in <strong>$file</strong>");
@@ -324,8 +429,13 @@ class DBV
         $return = array();
 
         foreach (new DirectoryIterator(DBV_REVISIONS_PATH) as $file) {
-            if ($file->isDir() && !$file->isDot() && is_numeric($file->getBasename())) {
-                $return[] = $file->getBasename();
+            $revision = $file->getBasename();
+            if ($file->isDir() && !$file->isDot() && is_numeric($revision)) {
+                if($files = $this->_getRevisionFiles($revision)){
+                    $return[] = $revision;
+                }else{
+                    self::deleteDir(DBV_REVISIONS_PATH.'/'.$revision);
+                }
             }
         }
 
@@ -334,42 +444,40 @@ class DBV
         return $return;
     }
 
+    public static function getProjects()
+    {
+        $return = array();
+        $root = dirname(__FILE__) . DIRECTORY_SEPARATOR . 'data';
+        $dir = new DirectoryIterator($root);
+        foreach ($dir as $fileInfo) {
+            if($fileInfo->isDot()) continue;
+            if($fileInfo->isDir()){
+                $project = null;
+                @include $root . DIRECTORY_SEPARATOR . $fileInfo->getBasename() . DIRECTORY_SEPARATOR . 'meta'. DIRECTORY_SEPARATOR . 'project.php'; 
+                if(!empty($project)) {
+                    $project->name = $fileInfo->getBasename();
+                    $return[] = $project;
+                }
+            }
+        }
+        return $return;
+    }
+    
+    
     protected function _getCurrentRevision()
     {
-        switch (DBV_REVISION_STORAGE) {
-            case 'FILE':
-                $file = DBV_META_PATH . DS . 'revision';
-                if (file_exists($file)) {
-                    return intval(file_get_contents($file));
-                }
-                return 0;
-                break;
-            case 'ADAPTER':
-                return $this->_getAdapter()->getCurrentRevision();
-                break;
-            default:
-                $this->error("Incorrect revision storage specified");
-                break;
+        $file = DBV_META_PATH . DS . 'revision';
+        if (file_exists($file)) {
+            return intval(file_get_contents($file));
         }
+        return 0;
     }
 
     protected function _setCurrentRevision($revision)
     {
-        switch (DBV_REVISION_STORAGE) {
-            case 'FILE':
-                $file = DBV_META_PATH . DS . 'revision';
-                if (!@file_put_contents($file, $revision)) {
-                    $this->error("Cannot write revision file");
-                }
-                break;
-            case 'ADAPTER':
-                if (!$this->_getAdapter()->setCurrentRevision($revision)){
-                    $this->error("Cannot save revision to DB");
-                }
-                break;
-            default:
-                $this->error("Incorrect revision storage specified");
-                break;
+        $file = DBV_META_PATH . DS . 'revision';
+        if (!@file_put_contents($file, $revision)) {
+            $this->error("Cannot write revision file");
         }
     }
 
@@ -429,7 +537,7 @@ class DBV
 
     protected function _json($data = array())
     {
-        header("Content-type: application/json");
+        header("Content-type: text/x-json");
         echo (is_string($data) ? $data : json_encode($data));
         exit();
     }
@@ -462,5 +570,23 @@ class DBV
         }
         return $instance;
     }
+
+    static function deleteDir($dirPath) {
+    if (! is_dir($dirPath)) {
+        throw new InvalidArgumentException("$dirPath must be a directory");
+    }
+    if (substr($dirPath, strlen($dirPath) - 1, 1) != '/') {
+        $dirPath .= '/';
+    }
+    $files = glob($dirPath . '*', GLOB_MARK);
+    foreach ($files as $file) {
+        if (is_dir($file)) {
+            self::deleteDir($file);
+        } else {
+            unlink($file);
+        }
+    }
+    @rmdir($dirPath);
+}        
 
 }

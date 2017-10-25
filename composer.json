@@ -1,0 +1,23 @@
+{
+    "repositories": [
+        {
+        "type": "git",
+        "url": "https://github.com/DBDiff/DBDiff.git"
+        }
+    ],
+    "require": {
+        "dbdiff/dbdiff": "dev-master"
+    },
+    "scripts": {
+        "post-install-cmd": [
+            "@copyDists"
+        ],
+        "post-update-cmd": [
+            "@copyDists"
+        ],
+        "copyDists": [
+          "cp -n .dbdiff.dist .dbdiff",
+          "cp -n vendor/dbdiff/dbdiff/dbdiff dbdiff.php"
+        ]
+    }
+}

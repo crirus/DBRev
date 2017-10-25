@@ -1,0 +1,26 @@
+server1:
+    user: root
+    password: 123
+    port: 3306
+    host: db
+server2:
+    user: root
+    password: 123
+    port: 3306
+    host: db
+template: templates/simple-db-migrate.tmpl
+type: schema
+include: all
+nocomments: true
+tablesToIgnore:
+- table1
+- table2
+- table3
+fieldsToIgnore:
+    table1:
+        - field1
+        - field2
+        - field3
+    table4:
+        - field1
+        - field4

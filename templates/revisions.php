@@ -1,13 +1,13 @@
 <h2><?php echo __('Revisions'); ?></h2>
-<?php if (isset($this->revisions) && count($this->revisions)) { ?>
-	<form method="post" action="" class="nomargin" id="revisions">
-		<div class="log"></div>
 
+<form method="post" action="" class="nomargin" id="revisions">
+<div class="log"></div>
+<?php if (isset($this->revisions) && count($this->revisions)) { ?>
 		<table class="table table-condensed table-striped table-bordered">
 			<thead>
 				<tr>
 					<th style="width: 13px;"><input type="checkbox" style="margin-top: 0;" /></th>
-					<th><?php echo __('Revision ID'); ?></th>
+					<th><?php echo __('Revision ID'); ?><span id='messages'></span></th>
 				</tr>
 			</thead>
 			<tbody>
@@ -55,20 +55,55 @@
 				<?php } ?>
 			</tbody>
 		</table>
-		<input type="submit" class="btn btn-primary" value="Run selected revisions" />
-	</form>
+        <br>
+        <div>
+            Project: <select class="project" name="project">
+            <?php foreach ($this->projects as $project) {?>
+                    <option <?php 
+                    if($this->project->name == $project->name) echo 'selected';
+                    ?> value="<?php echo $project->name; ?>" data-dev="<?php echo $project->dev; ?>" data-prod="<?php echo $project->prod; ?>"><?php echo strtoupper($project->name); ?></option>
+            <?php } ?>
+            
+            </select>
+            Dev: <input type="text" readonly="true" name="dev_db" style="width:120px" value="<?php echo DBDIFF_DEV;?>">
+            Prod: <input type="text" readonly="true" name="prod_db" style="width:120px" value="<?php echo DBDIFF_PROD;?>">
+        </div><br><br>
+		<input type="submit"  class="btn btn-primary" value="Run up" />
+        <input type="submit" class="btn btn-down" value="Run down" name="downversion" />
+        
+        <input type="button" class="btn btn-dbdiff" name ="dbdiff" value="DBDiff" />
+        <input type="button" class="btn btn-dbdifffull" name ="dbdifffull" value="Full DBDiff" />
+        <input type="button" class="btn btn-revdel" value="Delete selected Revision" />
+	
 <?php } else { ?>
 	<div class="alert alert-info nomargin">
-		<?php echo __('No revisions in #{path}', array('path' => '<strong>' . DBV_REVISIONS_PATH . '</strong>')) ?>
+		<?php echo __('No revisions in #{path}', array('path' => '<strong>' . REVISIONS_PATH . '</strong>')) ?>
 	</div>
+    <br><br>
+    <div>
+        Project: <select class="project" name="project">
+        <?php foreach ((array)$this->projects as $project) {?>
+                <option <?php 
+                    if($this->project->name == $project->name) echo 'selected';
+                    ?>  value="<?php echo $project->name; ?>" data-dev="<?php echo $project->dev; ?>" data-prod="<?php echo $project->prod; ?>"><?php echo strtoupper($project->name); ?></option>
+        <?php } ?>
+        
+        </select>
+        Dev: <input type="text" readonly="true" name="dev_db" style="width:120px" value="<?php echo DBDIFF_DEV;?>">
+        Prod: <input type="text" readonly="true" name="prod_db" style="width:120px" value="<?php echo DBDIFF_PROD;?>">
+    </div><br><br>
+    <div><input type="button" class="btn btn-dbdiff" value="Run DBDiff" /></div>
+    <input type="button" class="btn btn-dbdifffull" name ="dbdifffull" value="Run Full DBDiff" />
 <?php } ?>
+</form>
 <script type="text/javascript">
 	document.observe('dom:loaded', function () {
+        
 		var form = $('revisions');
 		if (!form) {
 			return;
 		}
-
+        var down = 0;
 		var textareas = form.select('textarea');
 		textareas.each(function (textarea) {
 			textarea['data-editor'] = CodeMirror.fromTextArea(textarea, {
@@ -81,6 +116,66 @@
 			});
 		});
 
+        $$('.btn-dbdiff').invoke('observe', 'click', function (event) {
+            var data = form.serialize(true);
+            
+            new Ajax.Request('index.php?a=dbdiff', {
+                parameters: {
+                    dev_db:data['dev_db'],
+                    prod_db:data['prod_db'],
+                },
+                onSuccess: function (transport) {
+                    window.location.reload();                    
+                }
+            });
+        });
+
+        $$('.btn-dbdifffull').invoke('observe', 'click', function (event) {
+            if(!confirm('Running full diff could mean a lot of data to be processed. Are you sure?')) return false;
+            var data = form.serialize(true);
+            
+            new Ajax.Request('index.php?a=dbdiff', {
+                parameters: {
+                    dev_db:data['dev_db'],
+                    prod_db:data['prod_db'],
+                    dif_type:1
+                },
+                onSuccess: function (transport) {
+                    window.location.reload();                    
+                }
+            });
+        });
+
+        $$('.btn-revdel').invoke('observe', 'click', function (event) {
+            var container = this.up('#messages');
+            var data = form.serialize(true);
+            if (!data.hasOwnProperty('revisions[]')) {
+                render_messages('error', this, "<?php echo __("You didn't select any revisions to delete") ?>");
+                Effect.ScrollTo('log', {duration: 0.2});
+                return false;
+            }
+
+            form.disable();
+
+            new Ajax.Request('index.php?a=revdel', {
+                parameters: {
+                    "revisions[]": data['revisions[]']
+                },
+                onSuccess: function (transport) {
+                    window.location.reload();
+                }
+            });
+        });
+
+        $$('.btn-down').invoke('observe', 'click', function (event) {
+            down = 1;
+        });
+        
+        $$('.project').invoke('observe', 'change', function (event) {
+            window.location.href = '?project=' + this.options[this.selectedIndex].value;
+        });
+        
+        
 		$$('.revision-handle').invoke('observe', 'click', function (event) {
 			var element = event.findElement('.revision-handle');
 			var container = element.up('td').down('.revision-files');
@@ -143,10 +238,13 @@
 			}
 
 			form.disable();
-
+            var downAction = 0;
+            if(down == 1) downAction = 1;
+            down = 0;
 			new Ajax.Request('index.php?a=revisions', {
 				parameters: {
-					"revisions[]": data['revisions[]']
+					"revisions[]": data['revisions[]'],
+                    "down" : downAction 
 				},
 				onSuccess: function (transport) {
 					form.enable();
@@ -154,7 +252,7 @@
                     var response = transport.responseText.evalJSON();
 
                     if (typeof response.error != 'undefined') {
-                        return APP.growler.error('<?php echo __('Error!'); ?>', response.error);
+                        return APP.growler.error('<?php echo _('Error!'); ?>', response.error);
                     }
 
                     if (response.messages.error) {

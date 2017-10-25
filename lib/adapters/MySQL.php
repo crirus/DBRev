@@ -1,50 +1,114 @@
 <?php
 
 require_once dirname(__FILE__) . DS . 'Interface.php';
-require_once dirname(__FILE__) . DS . 'PDO.php';
 
-class DBV_Adapter_MySQL extends DBV_Adapter_PDO
+class DBV_Adapter_MySQL implements DBV_Adapter_Interface
 {
-    protected function _getPDOAdapterParams()
+
+    /**
+     * @var PDO
+     */
+    protected $_connection;
+
+    public function connect($host = false, $port = false, $username = false, $password = false, $database_name = false)
     {
-        return array(
-            PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8"
+        $this->database_name = $database_name; // the DB name is later used to restrict SHOW PROCEDURE STATUS and SHOW_FUNCTION_STATUS to the current database
+
+        try {
+            $this->_connection = new PDO("mysql:host=$host;port=$port;dbname=$database_name", $username, $password, array(
+                PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8"
+            ));
+            $this->_connection->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+        } catch (PDOException $e) {
+            throw new DBV_Exception($e->getMessage(), (int) $e->getCode());
+        }
+    }
+
+    public function query($sql)
+    {
+        try {
+            return $this->_connection->query($sql);
+        } catch (PDOException $e) {
+            throw new DBV_Exception($e->getMessage(), (int) $e->getCode());
+        }
+    }
+
+    public function getSchema()
+    {
+        return array_merge(
+            $this->getTables(),
+            $this->getViews(),
+            $this->getTriggers(),
+            $this->getProcedures(),
+            $this->getFunctions()
         );
     }
 
-    protected function _buildDsn($host = false, $port = false, $database_name = false)
+    public function getTables($prefix = false)
     {
-        if ($host[0] == "/") {
-            $location = "unix_socket=$host";
-        } else {
-            $location = "host=$host;port=$port";
+        $return = array();
+
+        $result = $this->query('SHOW FULL TABLES');
+        while ($row = $result->fetch(PDO::FETCH_NUM)) {
+            if ($row[1] != 'BASE TABLE') {
+                continue;
+            }
+            $return[] = ($prefix ? "{$prefix} " : '') . $row[0];
         }
-        return "mysql:$location;dbname=$database_name";
+
+        return $return;
     }
 
-    protected function _getTablesQuery()
+    public function getViews($prefix = false)
     {
-        return $this->query('SHOW FULL TABLES');
+        $return = array();
+
+        $result = $this->query('SHOW FULL TABLES');
+        while ($row = $result->fetch(PDO::FETCH_NUM)) {
+            if ($row[1] != 'VIEW') {
+                continue;
+            }
+            $return[] = ($prefix ? "{$prefix} " : '') . $row[0];
+        }
+
+        return $return;
     }
 
-    protected function _getViewsQuery()
+    public function getTriggers($prefix = false)
     {
-        return $this->query('SHOW FULL TABLES');
+        $return = array();
+
+        $result = $this->query('SHOW TRIGGERS');
+        while ($row = $result->fetch(PDO::FETCH_NUM)) {
+            $return[] = ($prefix ? "{$prefix} " : '') . $row[0];
+        }
+
+        return $return;
     }
 
-    protected function _getTriggersQuery()
+    public function getFunctions($prefix = false)
     {
-        return $this->query('SHOW TRIGGERS');
+        $return = array();
+
+        $result = $this->query("SHOW FUNCTION STATUS WHERE Db = '{$this->database_name}'");
+        while ($row = $result->fetch(PDO::FETCH_NUM)) {
+            $return[] = ($prefix ? "{$prefix} " : '') . $row[1];
+        }
+
+        return $return;
     }
 
-    protected function _getFunctionsQuery()
+    public function getProcedures($prefix = false)
     {
-        return $this->query("SHOW FUNCTION STATUS WHERE Db = '{$this->database_name}'");
-    }
+        $return = array();
 
-    protected function _getProceduresQuery()
-    {
-        return $this->query("SHOW PROCEDURE STATUS WHERE Db = '{$this->database_name}'");
+        $result = $this->query("SHOW PROCEDURE STATUS WHERE Db = '{$this->database_name}'");
+        while ($row = $result->fetch(PDO::FETCH_NUM)) {
+            $return[] = ($prefix ? "{$prefix} " : '') . $row[1];
+        }
+
+        return $return;
     }
 
     public function getSchemaObject($name)
@@ -87,46 +151,4 @@ class DBV_Adapter_MySQL extends DBV_Adapter_PDO
         return $return;
     }
 
-    protected function _checkRevisionTableExist()
-    {
-        $sql = "
-            SELECT count(*) as count
-            FROM information_schema.tables
-            WHERE table_schema = '" . DB_NAME . "'
-            AND table_name = '" . DBV_REVISION_TABLE . "'";
-
-        $result = $this->query($sql);
-
-        if ($result->fetchColumn() == 0) {
-            $sql = "CREATE TABLE `" . DBV_REVISION_TABLE . "` (
-                `revision` SMALLINT UNSIGNED NOT NULL DEFAULT '0'
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8";
-
-            $this->query($sql);
-        }
-    }
-
-    public function getCurrentRevision()
-    {
-        $this->_checkRevisionTableExist();
-
-        $sql = "
-            SELECT revision
-            FROM " . DBV_REVISION_TABLE . "
-            LIMIT 1
-        ";
-
-        $result = $this->query($sql);
-
-        return intval($result->fetchColumn());
-    }
-
-    public function setCurrentRevision($revision)
-    {
-        $this->query("TRUNCATE TABLE `" . DBV_REVISION_TABLE . "` ");
-
-        $sql = "INSERT INTO " . DBV_REVISION_TABLE . " (`revision`) VALUES ('" . $revision . "');";
-
-        return $this->query($sql)->rowCount();
-    }
 }

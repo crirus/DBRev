@@ -14,7 +14,7 @@
             <thead>
                 <tr>
                     <th style="width: 13px;"><input type="checkbox" style="margin-top: 0;" /></th>
-                    <th><?php echo __('Schema object'); ?></th>
+                    <th><?php echo _('Schema object'); ?></th>
                     <th style="text-align: center; width: 50px;"><?php echo __('In DB'); ?></th>
                     <th style="text-align: center; width: 50px;"><?php echo __('On disk'); ?></th>
                 </tr>
@@ -25,7 +25,7 @@
                         <td class="center">
                             <input type="checkbox" name="schema[]" value="<?php echo $name; ?>" id="object-<?php echo $name; ?>" style="margin-top: 0;" />
                         </td>
-                        <td class="object-label">
+                        <td>
                             <label for="object-<?php echo $name; ?>">
                                 <?php echo $name; ?>
                             </label>

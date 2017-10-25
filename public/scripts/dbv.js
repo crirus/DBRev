@@ -50,6 +50,8 @@ function render_messages(type, container, messages, heading) {
 
     element.insert(list);
 
-    $(container).down('.log').insert(element);
+    $$('.log')[0].insert(element);
+    //console.log($$('.log')[0]);
+    //$(container).down('.log').insert(element);
 }
 

@@ -1,4 +1,9 @@
+# Add any directories, files, or patterns you don't want to be tracked by version control
+.idea/
+vendor/
+data/meta/revision
+dbdiff.php
+.dbdiff
 config.php
-.buildpath
-.project
-.settings
+data/mobidea_new/meta/project.php
+data/mobidea_new/meta/revision

@@ -30,6 +30,10 @@ pre {
 input[type="submit"] {
     font-size: 12px;
 }
+input[type="button"] {
+    font-size: 12px;
+}
+
 .left {
     float: left !important;
 }
@@ -57,12 +61,6 @@ h3 {
 }
 h4 {
     font-size: 12px;
-}
-td.object-label label {
-    width: 207px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }
 .nomargin {
     margin-bottom: 0 !important
