@@ -3,8 +3,8 @@
 
 body {
     font-size: 12px;
-    background: #252726 url(../images/bg.jpg);
-    background: #252726;
+    background: #fff url(../images/bg.jpg);
+    background: #fcfcfc;
 }
 :focus {
     outline: 0;
@@ -17,8 +17,8 @@ pre {
     margin: 10px 0;
 }
 #left {
-    color: rgba(255, 255, 255, 0.9);
-    text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.25);
+    color: #000;
+    
 }
 #right {
     padding: 10px;
@@ -91,7 +91,7 @@ a.revision-handle {
     box-shadow: 1px 1px 1px rgba(0, 0, 0, 0.2);
 }
 #left .table-bordered, #left .table-bordered th, #left .table-bordered td {
-    border-color: #212121;
+    border-color: #ccc;
 }
 #right .table-striped tbody tr:nth-child(even) td, #right .table-striped tbody tr:nth-child(even) th {
     background-color: white;
@@ -103,10 +103,10 @@ a.revision-handle {
     border-color: #062C5D
 }
 #left .label-success, #left .badge-success {
-    background-color: #379F39;
+    background-color: #333;
 }
 #left .label-important, #left .badge-important {
-    background-color: #D54E4B;
+    background-color: #ccc;
 }
 #left label {
     margin-bottom: 0;
