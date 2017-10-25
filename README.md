@@ -1,6 +1,19 @@
-Database version control, merged with dbdiff and extended to support multiple projects revision!
+DBRev is a fork of DBV project, a database version control, merged with dbdiff and extended to support multiple projects revision!
 
+**How to install:**
+- checout the project
+- run composer update
+- rename **.dbdiff.dist** to **.dbdiff** and edit as needed.
+- duplicate folder **/data/demo.dist** into your **[project-name]**
+- rename **/data/[project-name]/meta/project.dist.php** to **/data/[project-name]/meta/project.php**
+- edit **/data/[project-name]/meta/project.php** accordingly;
+- create a empty `*prod*` database.
 
-=
+**How it works:**
+You must have a development database and start with a empty production database.
+First time you use the project, make sure you run DBDiff, that will compare development database with production database and generate differences, for schema, data or both depending on your **.dbdiff** config.
 
-**dbv.php** is a database version control web application featuring schema management, revision scripts, and more!
+Once you have this file, you should see new revision installed and selected. Click **Run Up** to transfer this initial database state to locally created production database.
+
+After this, every time you change something in development database you can generate a new revision that you can transfer (**Run Up**) to local production. When done, you send it to remote server instalation of DBRev and **Run Up** there.
+
